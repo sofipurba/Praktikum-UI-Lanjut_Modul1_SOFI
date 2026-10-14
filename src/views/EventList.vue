@@ -52,6 +52,7 @@ const handleViewDetail = (id) => {
       <CategoryFilter :categories="categories" v-model="selectedCategory" />
     </div>
 
+    <!-- LAYOUT SYSTEM: ADAPTIVE GRID -->
     <div class="event-grid">
       <EventCard
         v-for="event in filteredEvents"
@@ -90,4 +91,5 @@ const handleViewDetail = (id) => {
   background: var(--bg-light);
   border-radius: var(--space-4);
 }
+.btn-link:hover { color: var(--primary); }
 </style>
