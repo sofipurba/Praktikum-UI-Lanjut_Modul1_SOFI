@@ -120,4 +120,5 @@ const handleViewDetail = (id) => {
   display: flex;
   justify-content: center;
 }
+.btn-link:hover { color: var(--primary); }
 </style>

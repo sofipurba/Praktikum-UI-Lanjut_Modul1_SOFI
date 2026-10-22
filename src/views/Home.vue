@@ -117,6 +117,7 @@ import AppCard from '@/components/ui/AppCard.vue';
 .feature-card {
   padding: var(--space-8);
   text-align: center;
+  transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .feature-icon {
