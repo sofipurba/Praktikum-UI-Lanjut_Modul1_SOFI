@@ -1,6 +1,6 @@
 <script setup>
-import AppButton from '@/components/UI/AppButton.vue';
-import AppCard from '@/components/UI/AppCard.vue';
+import AppButton from '@/components/ui/AppButton.vue';
+import AppCard from '@/components/ui/AppCard.vue';
 </script>
 
 <template>
