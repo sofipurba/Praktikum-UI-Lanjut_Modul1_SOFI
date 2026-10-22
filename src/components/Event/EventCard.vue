@@ -20,7 +20,7 @@
 </template>
 
 <script setup>
-import AppCard from '@/components/UI/AppCard.vue';
+import AppCard from '@/components/ui/AppCard.vue';
 
 defineProps({
   event: {
