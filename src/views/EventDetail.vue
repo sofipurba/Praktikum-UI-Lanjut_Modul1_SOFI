@@ -7,14 +7,20 @@ import AppCard from '@/components/ui/AppCard.vue';
 
 const route = useRoute();
 const router = useRouter();
-const { getEventById } = useEvents();
+const { getEventById, isUserRegistered } = useEvents();
 
 // MENGAMBIL DATA EVENT DINAMIS DARI STATE BERDASARKAN ID DI URL
 const event = computed(() => getEventById(route.params.id));
 
-// Template Vue tidak bisa memanggil alert() secara langsung, jadi dibungkus fungsi
-const handleRegister = () => {
-  window.alert('Ticket registered successfully! Your digital QR ticket has been sent to your email.');
+// CEK APAKAH PENGGUNA SUDAH TERDAFTAR DI EVENT INI
+const isRegistered = computed(() => {
+  return event.value ? isUserRegistered(event.value.id) : false;
+});
+
+// NAVIGASI PROGRAMATIK: Mengarahkan pengguna ke formulir pendaftaran event terkait
+const handleRegisterClick = () => {
+  if (!event.value) return;
+  router.push(`/browse/events/${event.value.id}/register`);
 };
 </script>
 
@@ -30,15 +36,17 @@ const handleRegister = () => {
         <div class="header-tags">
           <span class="event-tag">{{ event.cat }}</span>
           <span v-if="event.done" class="status-tag status-ended">Event Finished</span>
+          <span v-else-if="isRegistered" class="status-tag status-registered">Registered</span>
+          <span v-else-if="event.quota <= 0" class="status-tag status-soldout">Sold Out</span>
           <span v-else class="status-tag status-live">Open Registration</span>
         </div>
 
         <h1>{{ event.title }}</h1>
 
         <div class="meta-info">
-          <span class="meta-item">📅 {{ event.date }}</span>
-          <span class="meta-item">{{ event.loc }}</span>
-          <span class="meta-item">👥 Quota: {{ event.quota }} Attendees</span>
+          <span class="meta-item"><strong>Date:</strong> {{ event.date }}</span>
+          <span class="meta-item"><strong>Location:</strong> {{ event.loc }}</span>
+          <span class="meta-item"><strong>Remaining Quota:</strong> {{ event.quota }} Attendees</span>
         </div>
       </div>
 
@@ -56,31 +64,71 @@ const handleRegister = () => {
         <!-- FOCAL POINT & STICKY PANE -->
         <div class="sidebar">
           <AppCard class="ticket-card sticky-pane">
-            <h3>Attendee Registration</h3>
-            <p class="price">{{ event.price }}</p>
-            <p class="ticket-desc">
-              {{ event.done ? 'Registration is closed as this event has ended.' : 'Secure your ticket now before quota is filled.' }}
+            <h3>Event Registration</h3>
+
+            <p v-if="event.done" class="ticket-desc">
+              Registration is closed as this event has concluded.
+            </p>
+            <p v-else-if="isRegistered" class="ticket-desc text-success">
+              You are registered for this event. Your booking is confirmed.
+            </p>
+            <p v-else-if="event.quota <= 0" class="ticket-desc text-warning">
+              All seats for this event are currently full.
+            </p>
+            <p v-else class="ticket-desc">
+              Secure your spot now before the remaining quota is filled.
             </p>
 
-            <!-- BUTTON FOCAL POINT -->
-            <AppButton
-              v-if="!event.done"
-              variant="primary"
-              class="btn-register"
-              @click="handleRegister"
-            >
-              Register Now
-            </AppButton>
-            <AppButton
-              v-else
-              variant="secondary"
-              class="btn-register btn-disabled"
-              disabled
-            >
-              Registration Closed
-            </AppButton>
+            <!-- BUTTON FOCAL POINT DENGAN HIERARKI STATUS -->
+            <div class="action-buttons">
+              <!-- STATUS 1: SUDAH SELESAI -->
+              <AppButton
+                v-if="event.done"
+                variant="secondary"
+                class="btn-register btn-disabled"
+                disabled
+              >
+                Registration Closed
+              </AppButton>
 
-            <p v-if="!event.done" class="spots">Only {{ event.quota }} seats available!</p>
+              <!-- STATUS 2: SUDAH TERDAFTAR -->
+              <div v-else-if="isRegistered" class="registered-action-group">
+                <AppButton
+                  variant="secondary"
+                  class="btn-register btn-registered"
+                  disabled
+                >
+                  Already Registered
+                </AppButton>
+                <router-link :to="'/browse/your-events/' + event.id" class="view-receipt-link">
+                  View Your Ticket Receipt &rarr;
+                </router-link>
+              </div>
+
+              <!-- STATUS 3: KUOTA HABIS -->
+              <AppButton
+                v-else-if="event.quota <= 0"
+                variant="secondary"
+                class="btn-register btn-disabled"
+                disabled
+              >
+                Sold Out
+              </AppButton>
+
+              <!-- STATUS 4: TERSEDIA (NORMAL) -->
+              <AppButton
+                v-else
+                variant="primary"
+                class="btn-register"
+                @click="handleRegisterClick"
+              >
+                Register Now
+              </AppButton>
+            </div>
+
+            <p v-if="!event.done && !isRegistered && event.quota > 0" class="spots">
+              {{ event.quota }} seats available
+            </p>
           </AppCard>
         </div>
 
@@ -123,6 +171,7 @@ const handleRegister = () => {
   gap: var(--space-3);
   align-items: center;
   margin-bottom: var(--space-4);
+  flex-wrap: wrap;
 }
 
 .event-tag {
@@ -147,6 +196,16 @@ const handleRegister = () => {
   color: #27ae60;
 }
 
+.status-registered {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.status-soldout {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
 .status-ended {
   background: rgba(108, 117, 125, 0.15);
   color: #6c757d;
@@ -161,6 +220,7 @@ const handleRegister = () => {
 
 .meta-info { display: flex; gap: var(--space-6); flex-wrap: wrap; }
 .meta-item { color: var(--text-muted); font-weight: 500; font-size: 1.05rem; }
+.meta-item strong { color: var(--text-main); }
 
 /* ASYMMETRICAL GRID */
 .grid-asymmetric {
@@ -195,9 +255,10 @@ const handleRegister = () => {
   top: 100px;
 }
 
-.ticket-card h3 { font-size: 1.5rem; margin-bottom: var(--space-2); }
-.price { font-size: 2.8rem; font-weight: 800; color: var(--primary); margin-bottom: var(--space-2); }
-.ticket-desc { color: var(--text-muted); margin-bottom: var(--space-6); line-height: 1.5; }
+.ticket-card h3 { font-size: 1.4rem; margin-bottom: var(--space-3); color: var(--text-main); }
+.ticket-desc { color: var(--text-muted); margin-bottom: var(--space-6); line-height: 1.5; font-size: 0.95rem; }
+.ticket-desc.text-success { color: #15803d; font-weight: 500; }
+.ticket-desc.text-warning { color: #b91c1c; font-weight: 500; }
 
 .btn-register {
   width: 100%;
@@ -205,7 +266,35 @@ const handleRegister = () => {
 
 .btn-disabled {
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: 0.65;
+}
+
+.btn-registered {
+  cursor: default;
+  background: #f1f5f9;
+  color: #1e293b;
+  border: 1px solid var(--border-color);
+  opacity: 1;
+}
+
+.registered-action-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.view-receipt-link {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--primary);
+  text-decoration: none;
+  display: inline-block;
+  transition: color 0.2s;
+}
+
+.view-receipt-link:hover {
+  text-decoration: underline;
 }
 
 .spots { margin-top: var(--space-4); color: #27ae60; font-weight: 600; font-size: 0.95rem; }
