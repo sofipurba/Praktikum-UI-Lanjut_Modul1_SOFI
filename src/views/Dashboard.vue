@@ -1,11 +1,17 @@
 <script setup>
+import { onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useEvents } from '@/composables/useEvents';
 import AppCard from '@/components/ui/AppCard.vue';
 import AppButton from '@/components/ui/AppButton.vue';
 
 const router = useRouter();
-const { events, totalEvents, activeEvents, completedEvents } = useEvents();
+const { events, totalEvents, activeEvents, completedEvents, fetchEvents } = useEvents();
+
+// Sinkronkan statistik dasbor dengan data terbaru dari REST API
+onMounted(() => {
+  fetchEvents();
+});
 </script>
 
 <template>
