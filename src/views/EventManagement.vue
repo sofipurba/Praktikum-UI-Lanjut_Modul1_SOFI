@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useEvents } from '@/composables/useEvents';
 import AppModal from '@/components/ui/AppModal.vue';
@@ -13,7 +13,10 @@ const {
   completedEvents,
   createEvent,
   completeEvent,
-  deleteEvent
+  deleteEvent,
+  fetchEvents,
+  loading,
+  error
 } = useEvents();
 
 // KONDISI TAB AKTIF: 'active' | 'create' | 'completed'
@@ -23,6 +26,16 @@ const currentTab = ref('active');
 const isModalOpen = ref(false);
 const modalAction = ref('complete'); // 'complete' | 'delete'
 const selectedEvent = ref(null);
+const isProcessingAction = ref(false);
+const actionError = ref('');
+
+const createFormRef = ref(null);
+const isSubmitting = ref(false);
+
+// Ambil data event dari server saat halaman manajemen dibuka
+onMounted(() => {
+  fetchEvents();
+});
 
 const handleOpenCompleteModal = (event) => {
   selectedEvent.value = event;
@@ -36,29 +49,50 @@ const handleOpenDeleteModal = (event) => {
   isModalOpen.value = true;
 };
 
-const handleConfirmModal = () => {
+// EKSEKUSI AKSI KE SERVER: PUT (complete) / DELETE (hapus)
+const handleConfirmModal = async () => {
   if (selectedEvent.value) {
-    if (modalAction.value === 'complete') {
-      completeEvent(selectedEvent.value.id);
-    } else if (modalAction.value === 'delete') {
-      deleteEvent(selectedEvent.value.id);
+    isProcessingAction.value = true;
+    actionError.value = '';
+    try {
+      if (modalAction.value === 'complete') {
+        await completeEvent(selectedEvent.value.id);
+      } else if (modalAction.value === 'delete') {
+        await deleteEvent(selectedEvent.value.id);
+      }
+    } catch (err) {
+      actionError.value = err.message || 'Gagal memproses aksi ke server REST API.';
+    } finally {
+      isProcessingAction.value = false;
+      isModalOpen.value = false;
+      selectedEvent.value = null;
     }
-    isModalOpen.value = false;
-    selectedEvent.value = null;
   }
 };
 
 const handleCancelModal = () => {
+  if (isProcessingAction.value) return;
   isModalOpen.value = false;
   selectedEvent.value = null;
 };
 
-// HANDLER EVENT DIBUAT DARI EventCreateForm
-const handleCreateEvent = (eventData) => {
-  createEvent(eventData);
-  setTimeout(() => {
+// HANDLER EVENT DIBUAT DARI EventCreateForm SECARA ASINKRON (POST KE REST API)
+const handleCreateEvent = async (eventData) => {
+  isSubmitting.value = true;
+  try {
+    await createEvent(eventData);
+    if (createFormRef.value) {
+      createFormRef.value.resetForm();
+    }
     currentTab.value = 'active';
-  }, 1000);
+  } catch (err) {
+    // Formulir tidak di-reset agar ketikan panitia tidak hilang
+    if (createFormRef.value) {
+      createFormRef.value.setError(err.message || 'Gagal menyimpan acara ke server REST API.');
+    }
+  } finally {
+    isSubmitting.value = false;
+  }
 };
 </script>
 
@@ -96,9 +130,39 @@ const handleCreateEvent = (eventData) => {
       </button>
     </div>
 
+    <!-- PESAN GAGAL AKSI SERVER (DELETE / PUT) -->
+    <div v-if="actionError" class="action-error">
+      ⚠️ {{ actionError }}
+      <button class="action-error-close" @click="actionError = ''">&times;</button>
+    </div>
+
     <!-- TAB 1: ACTIVE EVENTS LIST -->
     <section v-if="currentTab === 'active'" class="tab-pane">
-      <div v-if="activeEvents.length > 0" class="events-grid">
+      <!-- LOADING STATE: saat data pertama kali diambil dari server -->
+      <div v-if="loading && activeEvents.length === 0" class="events-grid">
+        <div v-for="n in 3" :key="n" class="skeleton-card">
+          <div class="skeleton-meta">
+            <div class="skeleton-pill"></div>
+            <div class="skeleton-pill"></div>
+          </div>
+          <div class="skeleton-line skeleton-title"></div>
+          <div class="skeleton-line skeleton-loc"></div>
+          <div class="skeleton-line skeleton-desc"></div>
+          <div class="skeleton-line skeleton-desc short"></div>
+        </div>
+      </div>
+
+      <!-- ERROR STATE: gagal memuat data dari server -->
+      <div v-else-if="error && activeEvents.length === 0" class="error-state">
+        <div class="error-badge">NETWORK ERROR</div>
+        <h3>Failed to Load Events</h3>
+        <p>{{ error }}</p>
+        <div class="error-action">
+          <AppButton variant="primary" @click="fetchEvents">Muat Ulang</AppButton>
+        </div>
+      </div>
+
+      <div v-else-if="activeEvents.length > 0" class="events-grid">
         <OrganizerEventCard
           v-for="item in activeEvents"
           :key="item.id"
@@ -121,6 +185,8 @@ const handleCreateEvent = (eventData) => {
     <!-- TAB 2: CREATE EVENT FORM -->
     <section v-if="currentTab === 'create'" class="tab-pane">
       <EventCreateForm
+        ref="createFormRef"
+        :submitting="isSubmitting"
         @submit="handleCreateEvent"
         @cancel="currentTab = 'active'"
       />
@@ -153,7 +219,7 @@ const handleCreateEvent = (eventData) => {
       :message="modalAction === 'complete'
         ? `Are you sure you want to mark '${selectedEvent?.title}' as completed? Once completed, the status is final and the event will be automatically removed from public listings.`
         : `Are you sure you want to permanently delete '${selectedEvent?.title}'? This action cannot be undone and will permanently remove this event from all records.`"
-      :confirm-text="modalAction === 'complete' ? 'Yes, Complete' : 'Yes, Delete Permanently'"
+      :confirm-text="isProcessingAction ? 'Processing...' : (modalAction === 'complete' ? 'Yes, Complete' : 'Yes, Delete Permanently')"
       cancel-text="Cancel"
       @confirm="handleConfirmModal"
       @close="handleCancelModal"
@@ -250,6 +316,30 @@ const handleCreateEvent = (eventData) => {
 .empty-state p {
   color: var(--text-muted);
   margin-bottom: var(--space-6);
+}
+
+/* PESAN GAGAL AKSI SERVER */
+.action-error {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  background: #ffe3e3;
+  color: #c92a2a;
+  border: 1px solid #ffa8a8;
+  padding: var(--space-3) var(--space-4);
+  border-radius: 8px;
+  font-weight: 500;
+  margin-bottom: var(--space-6);
+}
+
+.action-error-close {
+  background: none;
+  border: none;
+  font-size: 1.3rem;
+  color: #c92a2a;
+  cursor: pointer;
+  line-height: 1;
 }
 
 @media (max-width: 768px) {
